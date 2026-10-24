@@ -1,0 +1,24 @@
+# Confidential inputs and all local/generated data are excluded.
+/private/
+/outputs/
+*.Rda
+*.rda
+*.RData
+*.Rdata
+*.rds
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.zip
+*.pdf
+*.png
+.Rhistory
+.RDataTmp
+.Rproj.user/
+.r_libs/
+.DS_Store
+.env
+.env.*
+*.pem
+*.key
