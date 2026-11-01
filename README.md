@@ -1,89 +1,64 @@
 # Multi-line Quota-Share Reinsurance
 
-R code accompanying **Diversification Benefits of Multi-line Quota-Share Reinsurance: Data-Driven Decision**, by Yichun Chi, Tsz Chai Fung, Jiyao Luo, and Liang Peng.
+R code for **Diversification Benefits of Multi-line Quota-Share Reinsurance: Data-Driven Decision**, by Yichun Chi, Tsz Chai Fung, Jiyao Luo, and Liang Peng.
 
-This repository provides six scientific R scripts supplied by the authors for simulation studies, empirical quota-share analysis, and descriptive cross-coverage dependence summaries. The proprietary European motor-insurance dataset is subject to a non-disclosure agreement and is not distributed here.
+## Setup
 
-## Requirements
-
-Install R and the packages imported by the simulation scripts: `snowfall`, `rlecuyer`, `copula`, `nleqslv`, `mvtnorm`, and `QRM`. From the repository root:
+Requires R and the packages `snowfall`, `rlecuyer`, `copula`, `nleqslv`, `mvtnorm`, and `QRM`. Install them from the repository root:
 
 ```sh
 Rscript code/install_dependencies.R
 ```
 
-The empirical case analyses require `nleqslv` and use R's built-in `parallel` package. The dependence script uses base R. Save `sessionInfo()` with local computations to record the software environment.
-
-## Code map
+## Files
 
 | Script | Purpose |
 | --- | --- |
-| `code/Simu_True.R` | Large-sample reference estimates, density plots, and built-in normal Q-Q plots for 16 configurations. |
-| `code/Simu.R` | Monte Carlo estimates and random-weight bootstrap draws for one selected configuration. |
-| `code/Summary_Simu.R` | Coverage deviations from nominal levels using matching simulation and reference files. |
-| `code/real_eur1_R1.R` | Empirical Case 1 estimates, bootstrap draws, and sensitivity analysis. |
-| `code/real_eur2_R1.R` | Empirical Case 2, using the Case 1 functions from the same directory. |
-| `code/Data_Dependence_Rev8.R` | Aggregate correlations and finite-threshold conditional exceedance summaries. |
+| `Simu_True.R` | Reference values, density plots, and normal Q-Q plots. |
+| `Simu.R` | Monte Carlo simulation and random-weight bootstrap. |
+| `Summary_Simu.R` | Coverage deviations from nominal levels. |
+| `real_eur1_R1.R`, `real_eur2_R1.R` | Empirical estimates and sensitivity analyses for Cases 1 and 2. |
+| `Data_Dependence_Rev8.R` | Aggregate correlations and conditional exceedance summaries. |
 
-Normal Q-Q plots are generated within `Simu_True.R`; a separate Q-Q script is no longer required.
+All scripts are in `code/`.
 
-## Simulation workflow
+## Simulations
 
-The simulation scripts use settings written in the source files. They do not support the previous simulation `REINSURANCE_*` environment variables. Make any run-specific changes in a local working copy.
+The 16 configurations combine Cases 1–4, scale vectors (1000, 1000, 1000) and (800, 1000, 1200), and Pareto shapes 3.5 and 6. All use `Sigma=1`, a Student-t copula with 3 degrees of freedom and off-diagonal correlation 0.25, and population joint ceded proportion 0.45.
 
-1. **Generate reference values.** `Simu_True.R` runs all 16 configurations by default: Cases 1-4, two scale vectors, and shapes 3.5 and 6, with `Sigma=1`. Each configuration uses `n=100000`, `N.sim=10000`, and `Boot=0`. It writes reference CSVs, density PDFs, and three normal Q-Q PDFs per configuration to the current working directory. These defaults are computationally intensive.
+Configure the source files before running:
 
-   ```sh
-   Rscript code/Simu_True.R
-   ```
+1. `Simu_True.R` runs all 16 configurations with `n=100000`, `N.sim=10000`, and `Boot=0`.
+2. In `Simu.R`, uncomment exactly one scenario line, such as `Case=1;Sigma=1;Scale=1;p.shape=3.5;`. Defaults are `n=1000`, `N.sim=1000`, and `Boot=2000`.
+3. In `Summary_Simu.R`, update both local paths (`setwd(...)` and `Myname.TV`) and match the scenario, `myn`, and `myboot` to the generated files. Its supplied selection is n=3000, Case 4, Sigma 1, Scale 2, shape 6, with 2000 bootstrap draws.
 
-2. **Choose a simulation configuration before running.** All scenario assignments near the end of `Simu.R` are commented out. Uncomment exactly one line, for example:
+Run in this order from the repository root:
 
-   ```r
-   Case=1;Sigma=1;Scale=1;p.shape=3.5;
-   ```
+```sh
+Rscript code/Simu_True.R
+Rscript code/Simu.R
+Rscript code/Summary_Simu.R
+```
 
-   The defaults are `n=1000`, `N.sim=1000`, and `Boot=2000`. The supplied execution loop runs one batch, with `job_id=1`. After selecting the configuration:
-
-   ```sh
-   Rscript code/Simu.R
-   ```
-
-   The result is saved as `Simu_n..._Case..._Sigma..._Scale..._Shape..._1.Rdata` in the current working directory.
-
-3. **Configure the coverage summary.** In `Summary_Simu.R`, replace the two author-specific locations: the directory in `setwd(...)` and the reference-CSV prefix in `Myname.TV`. Set `myn`, `mycase`, `mysigma`, `myscale`, and `myshape` to match the available results. Its supplied selection is `n=3000`, Case 4, Sigma 1, Scale 2, shape 6; this differs from the simulation sample-size default of `n=1000`. Its `myboot=2000` must also match the generated draws.
-
-   ```sh
-   Rscript code/Summary_Simu.R
-   ```
-
-   The console reports six coverage-minus-nominal deviations: the three estimators at 90%, followed by the three estimators at 95%. Negative values indicate coverage below the nominal level.
-
-Both simulation generators use the uniform output of `rcopula.t` directly in the Pareto transformation and set the population joint ceded proportion to `0.45`. See [Execution notes](PORTABILITY_NOTES.md) for the exact target formula and file conventions.
+Reference CSVs, density/Q-Q PDFs, and simulation files are written to the current working directory. The summary prints coverage minus the nominal level for three estimators at 90% and 95%, using at most 1000 replications. Full simulation settings are computationally intensive.
 
 ## Empirical analysis
 
-Authorized users should place the private file `data_eur.Rda` beside both empirical case scripts, normally at `code/data_eur.Rda`. Keep the two scripts together, then run:
+The proprietary European motor-insurance data are subject to a non-disclosure agreement and are not included. Supply authorized local inputs with numeric, finite, nonnegative losses, including zero-loss policies.
+
+| Analysis | Input file and saved object | Required columns |
+| --- | --- | --- |
+| Case analyses | `code/data_eur.Rda`, containing `final_df` | `"1"`, `"2"`, `"3"` |
+| Dependence summaries | A local Rda file containing data frame `data_eur` | `CLAIM_TPL`, `CLAIM_CAR`, `CLAIM_UMC` |
+
+Columns represent third-party liability, car damage, and uninsured motorist losses, respectively. Keep both case scripts and their input in the same directory; Case 2 sources the Case 1 functions.
 
 ```sh
 Rscript code/real_eur1_R1.R
 Rscript code/real_eur2_R1.R
+Rscript code/Data_Dependence_Rev8.R /absolute/path/data_eur_new.Rda /absolute/path/dependence_results
 ```
 
-Each case saves its `.Rda` result in the same directory as the scripts. The supported run controls are `REINSURANCE_B` (default `1000`), `REINSURANCE_NCORE` (`14`), and `REINSURANCE_NSIM` (`51`, odd). The earlier data-file and output-directory environment overrides are not supported by these supplied files.
+The case analyses save their results beside the scripts. Optional environment controls are `REINSURANCE_B=1000`, `REINSURANCE_NCORE=14`, and `REINSURANCE_NSIM=51` by default; the sensitivity-grid size must be odd.
 
-For dependence summaries, provide the authorized input and output paths explicitly:
-
-```sh
-Rscript code/Data_Dependence_Rev8.R /absolute/local/path/data_eur_new.Rda /absolute/local/path/dependence_results
-```
-
-Without arguments, this script uses `Code/data_eur_new.Rda` and `Empirical_Rev8`, relative to the current working directory. The capitalized default `Code/` differs from this repository's `code/` directory. [Data requirements](DATA_REQUIREMENTS.md) describe the two input schemas. No private input data are included.
-
-## Verification scope
-
-The six scientific R files in this update are supplied unchanged. Release checks cover R syntax parsing and file-integrity verification. The new full reference calculations, Monte Carlo/bootstrap experiments, and proprietary-data analyses have not been rerun for this update; these checks do not establish exact reproduction of every manuscript table or figure.
-
-## Reference
-
-Chi, Y., Fung, T. C., Luo, J., and Peng, L. *Diversification Benefits of Multi-line Quota-Share Reinsurance: Data-Driven Decision*. Manuscript.
+For dependence summaries, pass the input and output paths explicitly as shown. Outputs contain aggregate correlations, finite-threshold conditional exceedance probabilities, a LaTeX table, and computation notes.
