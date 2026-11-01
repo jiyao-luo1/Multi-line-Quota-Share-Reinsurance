@@ -1,29 +1,10 @@
 # Supplementary Code S1: cross-coverage dependence only.
 # Base R only. No network use, row-level output, or identifier export.
-# Usage: Rscript code/Data_Dependence_Rev8.R [private-data.Rda] [output-directory]
-script_directory <- function() {
-  file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
-  if (length(file_arg) == 1L && nzchar(sub("^--file=", "", file_arg))) {
-    return(dirname(normalizePath(sub("^--file=", "", file_arg),
-                                  winslash = "/", mustWork = FALSE)))
-  }
-  normalizePath(getwd(), winslash = "/", mustWork = TRUE)
-}
-REPO_DIR <- normalizePath(file.path(script_directory(), ".."),
-                          winslash = "/", mustWork = TRUE)
+# Usage: Rscript Code/Data_Dependence_Rev8.R private-data.Rda output-directory
 args <- commandArgs(trailingOnly = TRUE)
-input <- if (length(args) >= 1L) args[1L] else Sys.getenv(
-  "REINSURANCE_DATA_FILE",
-  unset = file.path(REPO_DIR, "private", "data_eur_new.Rda")
-)
-output <- if (length(args) >= 2L) args[2L] else Sys.getenv(
-  "REINSURANCE_OUTPUT_DIR",
-  unset = file.path(REPO_DIR, "outputs", "dependence")
-)
-if (!file.exists(input)) {
-  stop("Private data file not found: ", input,
-       ". Supply the authorized local Rda file as the first argument or set REINSURANCE_DATA_FILE.")
-}
+input <- if (length(args) >= 1L) args[1L] else "Code/data_eur_new.Rda"
+output <- if (length(args) >= 2L) args[2L] else "Empirical_Rev8"
+if (!file.exists(input)) stop("Supply the locally held private Rda file.")
 env <- new.env(parent = baseenv())
 load(input, envir = env)
 if (!exists("data_eur", envir = env, inherits = FALSE)) stop("Expected object data_eur.")
@@ -34,10 +15,7 @@ if (!all(vapply(dat[cols], is.numeric, logical(1)))) stop("Loss columns must be 
 X <- as.matrix(dat[cols])
 if (nrow(X) < 2L || any(!is.finite(X)) || any(X < 0)) stop("Expected finite nonnegative losses.")
 n <- nrow(X)
-if (!dir.exists(output) &&
-    !dir.create(output, recursive = TRUE, showWarnings = FALSE)) {
-  stop("Unable to create the dependence output directory: ", output)
-}
+dir.create(output, recursive = TRUE, showWarnings = FALSE)
 pearson <- cor(X)
 # cor(method='spearman') is Pearson correlation of average ranks, including zero ties.
 spearman <- cor(X, method = "spearman")

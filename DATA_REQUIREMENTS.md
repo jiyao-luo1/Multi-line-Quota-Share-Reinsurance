@@ -1,50 +1,43 @@
 # Private empirical data requirements
 
-The empirical dataset is proprietary and subject to a non-disclosure agreement. It is not distributed in this repository. Keep all private data locally and do not commit or upload individual records, identifiers, or real `.Rda` files. The simulation scripts do not require these private empirical data.
+The European motor-insurance dataset is proprietary and subject to a non-disclosure agreement. No individual records or original private data files are distributed in this repository. The simulation scripts generate their own samples and do not require these empirical inputs.
 
-The supplied empirical scripts use two distinct local input schemas. The object names and column names below are requirements of the corresponding scripts; these files are not interchangeable.
+## Input schemas
 
-| Scripts | Default local file | Required saved object | Required loss columns, in order |
+The empirical scripts use two distinct saved-object schemas. The files cannot be substituted for one another without preparing the required object locally under authorized access.
+
+| Scripts | Required saved object | Required loss columns, in order | Input location |
 | --- | --- | --- | --- |
-| `code/real_eur1_R1.R`, `code/real_eur2_R1.R` | `private/data_eur.Rda` | `final_df`, a data frame | `"1"`, `"2"`, `"3"` |
-| `code/Data_Dependence_Rev8.R` | `private/data_eur_new.Rda` | `data_eur`, a data frame | `CLAIM_TPL`, `CLAIM_CAR`, `CLAIM_UMC` |
+| `code/real_eur1_R1.R`, `code/real_eur2_R1.R` | `final_df`, with named loss columns | `"1"`, `"2"`, `"3"` | `data_eur.Rda` beside the two case scripts, normally `code/data_eur.Rda`. |
+| `code/Data_Dependence_Rev8.R` | `data_eur`, a data frame | `CLAIM_TPL`, `CLAIM_CAR`, `CLAIM_UMC` | First positional argument; otherwise `Code/data_eur_new.Rda`, relative to the working directory. |
 
-Each row represents one complete policy-level loss vector. The three columns represent third-party liability, car damage, and uninsured motorist losses, respectively. The columns must be numeric, finite, and nonnegative, retaining policies with zero losses. Additional columns are ignored. The case-analysis loader requires at least four rows for the split calculation; meaningful estimation also requires nondegenerate losses and sufficient tail observations. The dependence loader requires at least two rows. Constant columns or empty exceedance sets can produce undefined descriptive statistics.
+Each row should contain one complete policy-level loss vector. The columns represent third-party liability, car damage, and uninsured motorist losses in that order. Supply numeric, finite, nonnegative losses, retaining zero-loss policies. Additional columns are ignored. The case-analysis workflow requires enough nondegenerate observations for splitting and tail estimation. The dependence script explicitly requires at least two rows; constant columns or empty exceedance sets can produce undefined descriptive statistics.
 
-The supplied case-analysis scripts preserve the original row shuffle with seed `9` before splitting the observations. They also preserve the original estimation, smoothing, bootstrap procedures, pricing inputs, and default settings. Retain the supplied row ordering and shuffle procedure when comparing an authorized run with the original workflow. Public code availability does not imply that a different extract, row ordering, or software environment will reproduce the paper's numerical tables exactly.
+## Case analyses
 
-## Running the empirical analyses
-
-Run these commands from the repository root after placing the authorized files at their default local locations:
+Place the authorized `data_eur.Rda` file in the same directory as both case scripts. Keep those scripts together because Case 2 sources the Case 1 functions. From the repository root:
 
 ```sh
 Rscript code/real_eur1_R1.R
 Rscript code/real_eur2_R1.R
-Rscript code/Data_Dependence_Rev8.R
 ```
 
-The case-analysis scripts require the R package `nleqslv`; the dependence script uses base R. Case 2 sources the shared implementation in `code/real_eur1_R1.R`, so keep both scripts together.
+Case 1 saves `real_eur1_R1.Rda`, containing `sim.list.1`; Case 2 saves `real_eur2_R1.Rda`, containing `sim.list.2`. Both outputs are written beside the scripts, regardless of the launch working directory. The case analyses require `nleqslv` and use the built-in `parallel` package for bootstrap work.
 
-The case-analysis defaults are `REINSURANCE_B=1000`, `REINSURANCE_NCORE=14`, and `REINSURANCE_NSIM=51`. Available processor counts cap the requested number of workers. The two case analyses use their original bootstrap seeds, `91000` and `92000`. `REINSURANCE_NSIM` must be odd. These production runs can be computationally expensive.
+The supported controls are `REINSURANCE_B=1000`, `REINSURANCE_NCORE=14`, and `REINSURANCE_NSIM=51` by default. The grid size must be odd, and the worker count is capped by available processors. These supplied files do not support data-file or output-directory environment overrides.
 
-To use a different authorized local file or output location, set `REINSURANCE_DATA_FILE` and `REINSURANCE_OUTPUT_DIR` for the corresponding command. For example:
+The loader shuffles complete rows with seed `9` before the split analysis. The bootstrap seeds are `91000` and `92000` for Cases 1 and 2. Preserve the authorized input extract, its row ordering, and the supplied shuffle procedure when comparing runs. Code availability alone does not establish exact reproduction of the manuscript tables from a different data extract or software environment.
+
+## Descriptive dependence summaries
+
+Supply explicit local paths to avoid relying on the original default directory names:
 
 ```sh
-REINSURANCE_DATA_FILE=/absolute/local/path/data_eur.Rda \
-REINSURANCE_OUTPUT_DIR=/absolute/local/path/empirical-results \
-Rscript code/real_eur1_R1.R
+Rscript code/Data_Dependence_Rev8.R /absolute/local/path/data_eur_new.Rda /absolute/local/path/dependence_results
 ```
 
-Default paths are resolved relative to the repository, independently of the working directory used to launch the script. Explicit environment-variable or positional paths follow normal R path resolution; absolute paths avoid ambiguity. The default case-analysis results are saved as `outputs/empirical/real_eur1_R1.Rda` and `outputs/empirical/real_eur2_R1.Rda`. These are analysis outputs, not copies of the input records.
+The first argument selects the private input; the second selects the output directory. If omitted, the defaults are `Code/data_eur_new.Rda` and `Empirical_Rev8`, relative to the working directory. The capitalized `Code/` default is distinct from this repository's `code/` directory. The script does not read data-path or output-path environment variables.
 
-The dependence script also retains its optional positional arguments, which take precedence over the environment variables:
+The dependence script uses base R and writes `dependence_summary.csv`, `tail_exceedance_counts.csv`, `dependence_table.tex`, and `computation_notes.txt`. These contain aggregate summaries, with no individual records exported. Correlations use all supplied rows, including zero losses. Exceedance quantities at `q=0.95` and `0.99` are descriptive finite-threshold conditional probabilities, not asymptotic tail-dependence coefficients.
 
-```sh
-Rscript code/Data_Dependence_Rev8.R \
-  /absolute/local/path/data_eur_new.Rda \
-  /absolute/local/path/dependence-results
-```
-
-Its default output directory is `outputs/dependence/`. It writes aggregate Pearson and Spearman correlations, finite-threshold conditional exceedance summaries, a LaTeX table, and computation notes. Its exceedance quantities at `q = 0.95` and `0.99` are descriptive finite-threshold conditional probabilities, not asymptotic tail-dependence coefficients. No individual records are exported.
-
-The repository does not provide the private input files or assert exact reproduction of all paper tables. An authorized user must supply the corresponding local data extract in the required schema.
+Keep all private inputs local. The repository's exclusions cover private data and generated result files; inspect any separate submission or archive before sharing it. The confidential-data analyses were not rerun as part of this update.

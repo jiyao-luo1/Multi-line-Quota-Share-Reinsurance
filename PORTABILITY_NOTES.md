@@ -1,72 +1,58 @@
-# Portability changes and reproducibility scope
+# Execution notes and verification scope
 
-The four public simulation scripts are copies of the supplied scripts in `Code/`.
-Their estimating equations, nonlinear solvers, smoothing formulas, bootstrap
-weights, and historical random generator have been preserved.
+The six scientific R files are published exactly as supplied by the authors. Configure settings and local paths in a working copy before running a study. The dependency installer and repository documentation are separate from those scientific files.
 
-## Changes to execution
+## Simulation design
 
-- `Simu.R` now has an active default scenario (Case 1, Sigma 1, Scale 1,
-  shape 3.5); the original file had every scenario assignment commented out.
-  Its paper-sized defaults remain `n=1000`, 1,000 replications, and 2,000
-  bootstrap replicates. Use `REINSURANCE_N=3000` for the second sample size.
-- Unused direct imports of `snowfall`, `rlecuyer`, `copula`, and `mvtnorm`
-  were removed from `Simu.R` and `Simu_True.R`. Their required direct packages
-  are `QRM` and `nleqslv`; R installs package dependencies automatically.
-- Input settings are configurable through environment variables. Relative
-  paths are resolved from the repository root; absolute paths are accepted.
-  The default output directories are `outputs/simulation`, `outputs/true`,
-  `outputs/summary`, and `outputs/qq`, respectively. `REINSURANCE_OUT`
-  overrides the destination for each invocation.
-- `Summary_Simu.R` uses `REINSURANCE_SIM_DIR` and `REINSURANCE_TRUE_DIR`
-  instead of author-specific absolute paths, checks missing/incompatible
-  outputs, and writes a coverage CSV and session information in addition
-  to its original console summary. It retains the original interval order
-  statistics, the original file aggregation order, and removal of rows with
-  missing values. `REINSURANCE_BOOT` must match the simulation output and
-  be a multiple of 40 for those interval order statistics.
-- `Simu_QQ_Rev5.R` retains its existing command-line options and resumable
-  checkpoints; explicit command-line options take precedence over environment
-  defaults. Windows uses one worker because fork-based `mclapply` is not
-  available there. Other platforms retain the original worker behavior.
-- `Simu.R` remains sequential within a job. Its `REINSURANCE_JOB_ID`
-  selects the original seed/batch. `Simu_True.R` runs all 16 original scenario
-  branches by default; `REINSURANCE_JOB_ID=1` selects just one. Any explicit
-  scenario override selects branch 1 unless a job ID is also supplied.
-  The original fixed truth seed `102025` is retained across branches.
+Both `Simu.R` and `Simu_True.R` use `d=3`, `alpha=0.95`, and a Student-t copula with `df.nu=3`. The supplied `Sigma=1` matrix has off-diagonal entries `0.25`. The two scale vectors are `(1000, 1000, 1000)` and `(800, 1000, 1200)`; the shape values are `3.5` and `6`.
 
-## Environment settings
+The generator uses the copula output directly:
 
-| Script | Settings and defaults |
-| --- | --- |
-| `Simu.R` | `REINSURANCE_N=1000`, `REINSURANCE_REPS=1000`, `REINSURANCE_BOOT=2000`, `REINSURANCE_CASE=1`, `REINSURANCE_SIGMA=1`, `REINSURANCE_SCALE=1`, `REINSURANCE_SHAPE=3.5`, `REINSURANCE_JOB_ID=1` |
-| `Simu_True.R` | `REINSURANCE_TRUE_N=100000`, `REINSURANCE_TRUE_REPS=10000`; optional `REINSURANCE_JOB_ID` (1--16) and the same case/sigma/scale/shape overrides |
-| `Summary_Simu.R` | `REINSURANCE_N=3000`, `REINSURANCE_CASE=4`, `REINSURANCE_SIGMA=1`, `REINSURANCE_SCALE=2`, `REINSURANCE_SHAPE=6`, `REINSURANCE_BOOT=2000`, `REINSURANCE_SUMMARY_LIMIT=1000`, optional input-directory overrides above |
-| `Simu_QQ_Rev5.R` | `REINSURANCE_N=3000`, `REINSURANCE_REPS=2000`, `REINSURANCE_SEED=20261021`, `REINSURANCE_CASES=1,2,3,4`, `REINSURANCE_SHAPES=3.5,6`, `REINSURANCE_SCALE=1`, `REINSURANCE_WORKERS=4`; singular case/shape and `REINSURANCE_NCORE` are also accepted as fallbacks |
+```r
+U = rcopula.t(n, df=df.nu, p.sigma)
+U_unif = U
+X[,s] = p.scale[s] * ((1-U_unif[,s])^(-1/p.shape)-1)
+```
 
-Only small smoke runs were executed while preparing these public copies.
-The full truth calculation and coverage experiment are computationally
-substantial and were not rerun. The truth CSVs and original simulation
-replicate files are not present in the supplied working folder; run the
-truth and simulation scripts before requesting a coverage summary.
+The exposure target is defined by:
 
-## Historical implementation details retained
+```r
+mu_true = p.scale/(p.shape-1)
+mu0 = 0.45*tilde_beta_scalar*sum(mu_true)-sum(beta_vec*mu_true)
+```
 
-All three simulation generators first call `QRM::rcopula.t` and then apply
-`pt(..., df=3)` to its output. `QRM::rcopula.t` already returns uniform
-copula variates, so the second transform changes the margins; the resulting
-sample is not Pareto with the distribution stated in the manuscript. This
-behavior was verified from the installed `QRM` function and is retained to
-avoid silently changing the supplied implementation or historical results.
+This sets the population joint ceded proportion to `0.45`. The estimated joint proportion uses sample means and need not equal `0.45` in a finite sample. The supplied smoothing exponent remains `-0.33`.
 
-The supplied simulation scripts also set
-`mu0 = 0.2 * 0.1 * sum(scales) / (shape - 1)` while keeping
-`beta_vec = c(0.05, 0.05, 0.05)`. This differs from the manuscript's stated
-profitability-target formula, which subtracts `beta_vec` times the population
-means. The original simulation smoothing exponent `-0.33` is also retained,
-rather than replacing it with exactly `-1/3`.
+## Running and locating results
 
-These implementation-to-model differences require scientific reconciliation
-before claiming that a new full simulation run validates the stated model.
-The portability edits do not resolve or conceal those differences and do
-not establish exact reproduction of every historical table or figure.
+| Script | Supplied configuration and execution | Output or required local adjustment |
+| --- | --- | --- |
+| `Simu.R` | `n=1000`, `N.sim=1000`, `Boot=2000`; every scenario assignment is commented out. Select exactly one scenario before running. The active loop runs `job_id=1`. | Writes one `Simu_n..._Case..._Sigma..._Scale..._Shape..._1.Rdata` file to the current working directory. |
+| `Simu_True.R` | `n=100000`, `N.sim=10000`, `Boot=0`; the active loop runs `job_id=1:16` to select all 16 configurations. | Writes `True_Case..._Sigma..._Scale..._Shape....csv`, a density PDF, and `_QQ1.pdf`, `_QQ2.pdf`, `_QQ3.pdf` files per configuration to the current working directory. |
+| `Summary_Simu.R` | Selects `myn=3000`, `mycase=4`, `mysigma=1`, `myscale=2`, `myshape=6`, and `myboot=2000`. | Edit both author-specific paths and match the selected settings to existing reference and simulation files. Prints coverage-minus-nominal deviations to the console. |
+| `real_eur1_R1.R` | Case 1; defaults: 1,000 bootstrap draws, up to 14 workers, 51 sensitivity-grid points. | Reads `data_eur.Rda` and saves `real_eur1_R1.Rda` in the script directory. |
+| `real_eur2_R1.R` | Case 2; the same run-control defaults. Sources `real_eur1_R1.R` from the same directory. | Reads `data_eur.Rda` and saves `real_eur2_R1.Rda` in the script directory. |
+| `Data_Dependence_Rev8.R` | Accepts an input file and output directory as positional arguments. | Defaults to `Code/data_eur_new.Rda` and `Empirical_Rev8`, relative to the working directory. |
+
+The simulation scripts import `snowfall`, `rlecuyer`, `copula`, `nleqslv`, `mvtnorm`, and `QRM`. Their active outer loops are sequential; the supplied snowfall launch commands are commented out. Full runs can be computationally substantial. Normal Q-Q generation is built into `Simu_True.R`.
+
+### Matching summary inputs
+
+The two local locations in `Summary_Simu.R` are:
+
+- `setwd("/Users/lpeng/2026/Quota_ASTIN_Rev2/Simu_Data")`, which selects the simulation-file directory;
+- the `~/2026/Quota_ASTIN_Rev2/Simu_True/` prefix in `Myname.TV`, which selects the reference CSV.
+
+Replace both locations for the local machine. The selected case, Sigma, scale, and shape must agree across the reference and simulation files. `myn` must match the simulation sample size: the supplied summary uses `3000`, while `Simu.R` defaults to `1000`. `myboot` must match `Boot`; the supplied summary uses the fixed order statistics for 2,000 bootstrap draws.
+
+The summary combines files matching the selected filename pattern, removes rows with missing values, and uses at most 1,000 retained rows. It uses the first reference value in the selected CSV for the three estimators. The six printed deviations are empirical coverage minus `(0.90, 0.90, 0.90, 0.95, 0.95, 0.95)`. The script does not export a coverage CSV.
+
+### Supported controls
+
+The simulation and summary scripts do not read the previous simulation `REINSURANCE_*` environment variables; change their source settings and local paths when needed. Their output location follows the working directory, including the summary's explicit `setwd(...)`.
+
+The empirical case scripts support `REINSURANCE_B`, `REINSURANCE_NCORE`, and `REINSURANCE_NSIM`; `REINSURANCE_NSIM` must be odd. `REINSURANCE_SKIP_MAIN=1` is available for sourcing functions without running the main analysis. These files do not implement `REINSURANCE_DATA_FILE` or `REINSURANCE_OUTPUT_DIR`. The dependence script uses positional paths rather than environment overrides.
+
+## Verification scope
+
+This update was checked by parsing the R sources and verifying file integrity. No new full reference, Monte Carlo/bootstrap, or confidential-data computations were performed for the update. The repository provides the supplied code and usage information without asserting exact reproduction of all numerical results or figure layouts.

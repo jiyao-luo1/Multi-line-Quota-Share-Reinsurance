@@ -1,6 +1,9 @@
 # Confidential inputs and all local/generated data are excluded.
 /private/
 /outputs/
+/Empirical_Rev8/
+/Simu_Data/
+/Simu_True/
 *.Rda
 *.rda
 *.RData

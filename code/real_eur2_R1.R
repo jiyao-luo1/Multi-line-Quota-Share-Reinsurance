@@ -40,7 +40,7 @@ case2_main <- function() {
   )
 
   X <- load_loss_matrix(
-    empirical_data_file(), seed = 9L
+    file.path(CASE2_SCRIPT_DIR, "data_eur.Rda"), seed = 9L
   )
   start_time <- proc.time()[["elapsed"]]
   sim.list.2 <- run_case_analysis(
@@ -51,7 +51,7 @@ case2_main <- function() {
 
   save(
     sim.list.2,
-    file = file.path(empirical_output_directory(), "real_eur2_R1.Rda")
+    file = file.path(CASE2_SCRIPT_DIR, "real_eur2_R1.Rda")
   )
 
   diagnostics <- attr(sim.list.2, "diagnostics")

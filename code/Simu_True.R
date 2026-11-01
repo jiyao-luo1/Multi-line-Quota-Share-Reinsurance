@@ -1,37 +1,13 @@
-# Portable public copy; estimation and historical random generation are unchanged.
-# Run from the repository root with Rscript code/Simu_True.R.
-script_argument <- grep("^--file=", commandArgs(FALSE), value = TRUE)
-if (length(script_argument) != 1L) stop("Run this file with Rscript.")
-repository_root <- dirname(dirname(normalizePath(sub("^--file=", "", script_argument))))
-env_integer <- function(name, default, minimum = 1L) {
-  value <- suppressWarnings(as.numeric(Sys.getenv(name, as.character(default))))
-  if (length(value) != 1L || !is.finite(value) || value != floor(value) || value < minimum)
-    stop(name, " must be an integer >= ", minimum, ".")
-  as.integer(value)
-}
-env_number <- function(name, default) {
-  value <- suppressWarnings(as.numeric(Sys.getenv(name, as.character(default))))
-  if (length(value) != 1L || !is.finite(value)) stop(name, " must be finite and numeric.")
-  value
-}
-output_directory <- function(default) {
-  value <- Sys.getenv("REINSURANCE_OUT", default)
-  if (!grepl("^(/|[A-Za-z]:[/\\])", value)) value <- file.path(repository_root, value)
-  dir.create(value, recursive = TRUE, showWarnings = FALSE)
-  if (!dir.exists(value)) stop("Cannot create output directory: ", value)
-  value
-}
-for (package in c("QRM", "nleqslv")) {
-  if (!requireNamespace(package, quietly = TRUE)) stop("Missing R package: ", package)
-}
-library(QRM)
-library(nleqslv)
 
-OUT <- output_directory("outputs/true")
-
-
+rm(list=ls())
+library(snowfall)
+library(rlecuyer)
 
 parallel_func=function(arg){
+library(copula)
+library(nleqslv)
+library(mvtnorm)
+library(QRM)
   ### Kernel function Kbar for standard normal survival function
   Kbar <- function(z) {1 - pnorm(z)}
   
@@ -97,8 +73,6 @@ wgt=matrix(wgt,nrow=n,ncol=1)
     c_vec_hat <- exp(sol$x[1:d])/(1+exp(sol$x[1:d]))
     }
     
-    #lambda_I_hat <- sol$x[d+1]
-    #print(is.na(c_vec_hat))
 return(c_vec_hat)    
 #return(list(sol=sol, c_hat=c_hat, lambda_I_hat=lambda_I_hat, convergence=sol$convergence))
   }
@@ -117,7 +91,7 @@ wgt_U=wgt[s_U,]
 mu_hat <- t(X)%*%wgt/sum(wgt)
 
 
-#c_hat=(beta*sum(mu_hat)+mu0)/(tilde_beta*sum(mu_hat))
+
 ##the same premium
 c_hat=(sum(beta_vec*mu_hat)+mu0)/(tilde_beta*sum(mu_hat))
 
@@ -183,8 +157,7 @@ simu=function(n,N.sim,Boot,Case,Sigma,Scale,p.shape){
   if(Sigma==1){
     p.sigma <- array(c(1,0.25,0.25,0.25,1,0.25,0.25,0.25,1),dim=c(3,3))
   }
-  if(Sigma==2){p.sigma <- array(c(1,0,-0.25,0,1,-0.25,-0.25,-0.25,1),dim=c(3,3))
-  }
+  
   if(Scale==1){p.scale <- c(1000, 1000, 1000);}
   if(Scale==2){p.scale <- c(800, 1000, 1200);}
   
@@ -195,24 +168,25 @@ simu=function(n,N.sim,Boot,Case,Sigma,Scale,p.shape){
     tilde_beta_vec <- c(0.1, 0.1, 0.1);
   }
   if(Case==2){
-    beta_scalar <- 0.05*0; 
-    beta_vec <-c(0.05,0.05,0.05)+0*c(0.05+0.02*p.scale[2]/p.scale[1], 0.05-0.01, 0.05+0.02*p.scale[2]/p.scale[3]);
+    beta_scalar <- 0; 
+    beta_vec <-c(0.05,0.05,0.05);
     tilde_beta_scalar <- 0.1; tilde_beta_vec <- c(0.1+0.01*p.scale[2]/p.scale[1], 0.1, 0.1+0.01*p.scale[2]/p.scale[3]);
     }
-  if(Case==3){beta_scalar <- 0.05*0; 
-  beta_vec <-c(0.05,0.05,0.05)+0*c(0.05-0.02*p.scale[2]/p.scale[1], 0.05+0.01, 0.05-0.02*p.scale[2]/p.scale[3]);
+  if(Case==3){beta_scalar <- 0; 
+  beta_vec <-c(0.05,0.05,0.05);
   tilde_beta_scalar <- 0.1; tilde_beta_vec <- c(0.1-0.01*p.scale[2]/p.scale[1], 0.1, 0.1-0.01*p.scale[2]/p.scale[3]);
   }
   
   if(Case==4){
-    beta_scalar <- 0.05*0; 
-    beta_vec <-c(0.05,0.05,0.05)+0*c(0.05+0.05*p.scale[2]/p.scale[1], 0.05-0.01, 0.05+0.05*p.scale[2]/p.scale[3]);
+    beta_scalar <- 0; 
+    beta_vec <-c(0.05,0.05,0.05);
     tilde_beta_scalar <- 0.1; tilde_beta_vec <- c(0.1+0.01*p.scale[2]/p.scale[1], 0.1, 0.1-0.01*p.scale[2]/p.scale[3]);
   }
   
   
+  mu_true=p.scale/(p.shape-1)
+mu0=0.45*tilde_beta_scalar*sum(mu_true)-sum(beta_vec*mu_true)
   
-  mu0=(0.2*tilde_beta_scalar-beta_scalar)/(p.shape-1)*sum(p.scale)
 
   res=matrix(NA, nrow=N.sim,ncol=(8+d)*(1+Boot))
 for(j in 1:N.sim){
@@ -221,7 +195,7 @@ for(j in 1:N.sim){
         #U_unif <- pnorm(U)
   
   U=rcopula.t(n, df=df.nu,p.sigma)
-  U_unif=pt(U,df=df.nu)
+  U_unif=U
 X <- matrix(NA, nrow=n,ncol=d)
         for (s in 1:d) {X[,s] <- p.scale[s]*((1-U_unif[,s])^(-1/p.shape)-1)}
         wgt=rep(1,n) # not bootstrap yet!
@@ -237,21 +211,13 @@ res[j,(1+(8+d)*b):((8+d)*(1+b))]=estimate_theta(X,beta_scalar,tilde_beta_scalar,
 return(res)
 }
 ####
-n <- env_integer("REINSURANCE_TRUE_N", 100000L, 4L)
-N.sim <- env_integer("REINSURANCE_TRUE_REPS", 10000L, 2L)
-Boot <- 0L
-if (n %% 2L != 0L) stop("REINSURANCE_TRUE_N must be even for equal halves.")
+n=100000;N.sim=10000;Boot=0;
 sim.true=matrix(NA,nrow=1,ncol=8+d);
 if(arg==1){
-Case <- env_integer("REINSURANCE_CASE", 1L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 1L)
-p.shape <- env_number("REINSURANCE_SHAPE", 3.5)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=1;Sigma=1;Scale=1;p.shape=3.5;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')));
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'));
 
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
@@ -259,314 +225,402 @@ plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
 
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
+
+
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 
 if(arg==2){
-Case <- env_integer("REINSURANCE_CASE", 2L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 1L)
-p.shape <- env_number("REINSURANCE_SHAPE", 3.5)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=2;Sigma=1;Scale=1;p.shape=3.5;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
 plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 
 if(arg==3){
-Case <- env_integer("REINSURANCE_CASE", 3L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 1L)
-p.shape <- env_number("REINSURANCE_SHAPE", 3.5)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=3;Sigma=1;Scale=1;p.shape=3.5;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
 plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 if(arg==4){
-  Case <- env_integer("REINSURANCE_CASE", 4L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 1L)
-p.shape <- env_number("REINSURANCE_SHAPE", 3.5)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+  Case=4;Sigma=1;Scale=1;p.shape=3.5;
   res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
   sim.true[1,]=apply(res,2,mean)
-  pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+  pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
   par(mfrow=c(1,3))
   plot(density(res[,1]),xlab="",main="hat_theta1")
   plot(density(res[,2]),xlab="",main="hat_theta2")
   plot(density(res[,3]),xlab="",main="hat_theta3")
   dev.off()
-  colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
+  pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
   print(sim.true)
-  write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+  write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 if(arg==5){
-Case <- env_integer("REINSURANCE_CASE", 1L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 2L)
-p.shape <- env_number("REINSURANCE_SHAPE", 3.5)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=1;Sigma=1;Scale=2;p.shape=3.5;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
 plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 if(arg==6){
-Case <- env_integer("REINSURANCE_CASE", 2L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 2L)
-p.shape <- env_number("REINSURANCE_SHAPE", 3.5)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=2;Sigma=1;Scale=2;p.shape=3.5;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
 plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 
 if(arg==7){
-Case <- env_integer("REINSURANCE_CASE", 3L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 2L)
-p.shape <- env_number("REINSURANCE_SHAPE", 3.5)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=3;Sigma=1;Scale=2;p.shape=3.5;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
 plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 if(arg==8){
-  Case <- env_integer("REINSURANCE_CASE", 4L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 2L)
-p.shape <- env_number("REINSURANCE_SHAPE", 3.5)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+  Case=4;Sigma=1;Scale=2;p.shape=3.5;
   res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
   sim.true[1,]=apply(res,2,mean)
-  pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+  pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
   par(mfrow=c(1,3))
   plot(density(res[,1]),xlab="",main="hat_theta1")
   plot(density(res[,2]),xlab="",main="hat_theta2")
   plot(density(res[,3]),xlab="",main="hat_theta3")
   dev.off()
-  colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
+  
+colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
   print(sim.true)
-  write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+  write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 if(arg==9){
-Case <- env_integer("REINSURANCE_CASE", 1L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 1L)
-p.shape <- env_number("REINSURANCE_SHAPE", 6)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=1;Sigma=1;Scale=1;p.shape=6;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
 plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 if(arg==10){
-Case <- env_integer("REINSURANCE_CASE", 2L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 1L)
-p.shape <- env_number("REINSURANCE_SHAPE", 6)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=2;Sigma=1;Scale=1;p.shape=6;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
 plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 if(arg==11){
-Case <- env_integer("REINSURANCE_CASE", 3L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 1L)
-p.shape <- env_number("REINSURANCE_SHAPE", 6)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=3;Sigma=1;Scale=1;p.shape=6;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
 plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 if(arg==12){
-  Case <- env_integer("REINSURANCE_CASE", 4L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 1L)
-p.shape <- env_number("REINSURANCE_SHAPE", 6)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+  Case=4;Sigma=1;Scale=1;p.shape=6;
   res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
   sim.true[1,]=apply(res,2,mean)
-  pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+  pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
   par(mfrow=c(1,3))
   plot(density(res[,1]),xlab="",main="hat_theta1")
   plot(density(res[,2]),xlab="",main="hat_theta2")
   plot(density(res[,3]),xlab="",main="hat_theta3")
   dev.off()
-  colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
+  
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
+colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
   print(sim.true)
-  write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+  write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 
 if(arg==13){
-Case <- env_integer("REINSURANCE_CASE", 1L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 2L)
-p.shape <- env_number("REINSURANCE_SHAPE", 6)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=1;Sigma=1;Scale=2;p.shape=6;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
 plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 
 if(arg==14){
-Case <- env_integer("REINSURANCE_CASE", 2L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 2L)
-p.shape <- env_number("REINSURANCE_SHAPE", 6)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=2;Sigma=1;Scale=2;p.shape=6;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
 plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
+
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 if(arg==15){
-Case <- env_integer("REINSURANCE_CASE", 3L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 2L)
-p.shape <- env_number("REINSURANCE_SHAPE", 6)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+Case=3;Sigma=1;Scale=2;p.shape=6;
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 sim.true[1,]=apply(res,2,mean)
-pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
 par(mfrow=c(1,3))
 plot(density(res[,1]),xlab="",main="hat_theta1")
 plot(density(res[,2]),xlab="",main="hat_theta2")
 plot(density(res[,3]),xlab="",main="hat_theta3")
 dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
+
 colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
 print(sim.true)
-write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
 
 if(arg==16){
-  Case <- env_integer("REINSURANCE_CASE", 4L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 2L)
-p.shape <- env_number("REINSURANCE_SHAPE", 6)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+  Case=4;Sigma=1;Scale=2;p.shape=6;
   res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
   sim.true[1,]=apply(res,2,mean)
-  pdf(file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf')))
+  pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.pdf'))
   par(mfrow=c(1,3))
   plot(density(res[,1]),xlab="",main="hat_theta1")
   plot(density(res[,2]),xlab="",main="hat_theta2")
   plot(density(res[,3]),xlab="",main="hat_theta3")
   dev.off()
-  colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
+  
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ1.pdf'));
+qqnorm(res[,1]);qqline(res[,1])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ2.pdf'));
+qqnorm(res[,2]);qqline(res[,2])
+dev.off()
+pdf(file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_QQ3.pdf'));
+qqnorm(res[,3]);qqline(res[,3])
+dev.off()
+
+
+colnames(sim.true)=c("theta1","theta2","theta","rho_J","rho_L_J","rho_I","rho_U_I","c_0","c_es1","c_es2","c_es3")
   print(sim.true)
-  write.csv(sim.true,file=file.path(OUT,paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv')))
+  write.csv(sim.true,file=paste0('True_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'.csv'))
 }
   
  }
-# By default calculate all sixteen historical settings. A job ID selects one.
-# Any scenario override selects branch 1 unless REINSURANCE_JOB_ID is supplied.
-scenario_variables <- c("REINSURANCE_CASE", "REINSURANCE_SIGMA",
-                        "REINSURANCE_SCALE", "REINSURANCE_SHAPE")
-selected_job <- Sys.getenv("REINSURANCE_JOB_ID", "")
-if (nzchar(selected_job)) {
-  jobs <- env_integer("REINSURANCE_JOB_ID", 1L)
-} else if (any(nzchar(Sys.getenv(scenario_variables, "")))) {
-  jobs <- 1L
-} else {
-  jobs <- seq_len(16L)
+#job_id=as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
+#sfInit(parallel = TRUE, cpus =1, type = 'SOCK')
+#sfClusterSetupRNGstream(seed = rep(job_id,4))
+#res <- sfLapply(job_id, parallel_func)
+#sfStop()
+for(job_id in 1:16){
+  set.seed(rep(job_id,4));parallel_func(job_id)
 }
-if (any(!jobs %in% 1:16)) stop("REINSURANCE_JOB_ID must be in 1:16 for Simu_True.R.")
-for (job_id in jobs) parallel_func(job_id)
+

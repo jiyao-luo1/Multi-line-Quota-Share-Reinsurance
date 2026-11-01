@@ -1,38 +1,14 @@
-# Portable public copy; estimation and historical random generation are unchanged.
-# Run from the repository root with Rscript code/Simu.R.
-script_argument <- grep("^--file=", commandArgs(FALSE), value = TRUE)
-if (length(script_argument) != 1L) stop("Run this file with Rscript.")
-repository_root <- dirname(dirname(normalizePath(sub("^--file=", "", script_argument))))
-env_integer <- function(name, default, minimum = 1L) {
-  value <- suppressWarnings(as.numeric(Sys.getenv(name, as.character(default))))
-  if (length(value) != 1L || !is.finite(value) || value != floor(value) || value < minimum)
-    stop(name, " must be an integer >= ", minimum, ".")
-  as.integer(value)
-}
-env_number <- function(name, default) {
-  value <- suppressWarnings(as.numeric(Sys.getenv(name, as.character(default))))
-  if (length(value) != 1L || !is.finite(value)) stop(name, " must be finite and numeric.")
-  value
-}
-output_directory <- function(default) {
-  value <- Sys.getenv("REINSURANCE_OUT", default)
-  if (!grepl("^(/|[A-Za-z]:[/\\])", value)) value <- file.path(repository_root, value)
-  dir.create(value, recursive = TRUE, showWarnings = FALSE)
-  if (!dir.exists(value)) stop("Cannot create output directory: ", value)
-  value
-}
-for (package in c("QRM", "nleqslv")) {
-  if (!requireNamespace(package, quietly = TRUE)) stop("Missing R package: ", package)
-}
-library(QRM)
-library(nleqslv)
 
-OUT <- output_directory("outputs/simulation")
-
-
+rm(list=ls())
+library(snowfall)
+library(rlecuyer)
 
 
 parallel_func=function(arg){
+library(copula)
+library(nleqslv)
+library(mvtnorm)
+library(QRM)
   ### Kernel function Kbar for standard normal survival function
   Kbar <- function(z) {1 - pnorm(z)}
   
@@ -91,7 +67,7 @@ wgt=matrix(wgt,nrow=n,ncol=1)
     if(length(sol)>1){
     c_vec_hat <- exp(sol$x[1:d])/(1+exp(sol$x[1:d]))}
     
-    #lambda_I_hat <- sol$x[d+1]
+    
 return(c_vec_hat)    
 #return(list(sol=sol, c_hat=c_hat, lambda_I_hat=lambda_I_hat, convergence=sol$convergence))
   }
@@ -102,7 +78,6 @@ beta_vec=matrix(beta_vec,nrow=d,ncol=1)
 tilde_beta_vec=matrix(tilde_beta_vec,nrow=d,ncol=1)
 wgt=matrix(wgt,nrow=n,ncol=1)
 m=as.integer(n*0.5);
-#s_L=(1:m)*2-1;s_U=(1:m)*2;
 s_L=1:m;s_U=(1+m):n
 X_L=X[s_L,];X_U=X[s_U,]
 wgt_L=wgt[s_L,]
@@ -110,7 +85,7 @@ wgt_U=wgt[s_U,]
 mu_hat <- t(X)%*%wgt/sum(wgt)
 
 
-#c_hat=(beta*sum(mu_hat)+mu0)/(tilde_beta*sum(mu_hat))
+
 #the same premium
 c_hat=(sum(beta_vec*mu_hat)+mu0)/(tilde_beta*sum(mu_hat))
 
@@ -176,32 +151,32 @@ simu=function(n,N.sim,Boot,Case,Sigma,Scale,p.shape){
   if(Sigma==1){
     p.sigma <- array(c(1,0.25,0.25,0.25,1,0.25,0.25,0.25,1),dim=c(3,3))
   }
-  if(Sigma==2){p.sigma <- array(c(1,0,-0.25,0,1,-0.25,-0.25,-0.25,1),dim=c(3,3))
-  }
+  
 if(Scale==1){p.scale <- c(1000, 1000, 1000);}
   if(Scale==2){p.scale <- c(800, 1000, 1200);}
   if(Case==1){
-    beta_scalar <- 0.05*0; beta_vec <- c(0.05, 0.05, 0.05);
+    beta_scalar <-0; beta_vec <- c(0.05, 0.05, 0.05);
     tilde_beta_scalar <- 0.1;
     tilde_beta_vec <- c(0.1, 0.1, 0.1);
   }
   if(Case==2){
-    beta_scalar <- 0.05*0; 
-    beta_vec <-c(0.05,0.05,0.05)+0*c(0.05+0.02*p.scale[2]/p.scale[1], 0.05-0.01, 0.05+0.02*p.scale[2]/p.scale[3]);
+    beta_scalar <-0; 
+    beta_vec <-c(0.05,0.05,0.05);
     tilde_beta_scalar <- 0.1; tilde_beta_vec <- c(0.1+0.01*p.scale[2]/p.scale[1], 0.1, 0.1+0.01*p.scale[2]/p.scale[3]);
   }
-  if(Case==3){beta_scalar <- 0.05*0; 
-  beta_vec <-c(0.05,0.05,0.05)+0*c(0.05-0.02*p.scale[2]/p.scale[1], 0.05+0.01, 0.05-0.02*p.scale[2]/p.scale[3]);
+  if(Case==3){beta_scalar <- 0; 
+  beta_vec <-c(0.05,0.05,0.05);
   tilde_beta_scalar <- 0.1; tilde_beta_vec <- c(0.1-0.01*p.scale[2]/p.scale[1], 0.1, 0.1-0.01*p.scale[2]/p.scale[3]);
   }
   if(Case==4){
-    beta_scalar <- 0.05*0; 
-    beta_vec <-c(0.05,0.05,0.05)+0*c(0.05+0.1*p.scale[2]/p.scale[1], 0.05-0.01, 0.05+0.1*p.scale[2]/p.scale[3]);
+    beta_scalar <- 0; 
+    beta_vec <-c(0.05,0.05,0.05);
     tilde_beta_scalar <- 0.1; tilde_beta_vec <- c(0.1+0.01*p.scale[2]/p.scale[1], 0.1, 0.1-0.01*p.scale[2]/p.scale[3]);
   }
-  
-  mu0=(0.2*tilde_beta_scalar-beta_scalar)/(p.shape-1)*sum(p.scale)
-  
+  mu_true=p.scale/(p.shape-1)
+mu0=0.45*tilde_beta_scalar*sum(mu_true)-sum(beta_vec*mu_true)
+ 
+
  
 res=matrix(NA, nrow=N.sim,ncol=(8+d)*(1+Boot))
 for(j in 1:N.sim){
@@ -210,7 +185,7 @@ for(j in 1:N.sim){
         #U_unif <- pnorm(U)
   
   U=rcopula.t(n, df=df.nu,p.sigma)
-  U_unif=pt(U,df=df.nu)
+  U_unif=U 
 X <- matrix(NA, nrow=n,ncol=d)
         for (s in 1:d) {X[,s] <- p.scale[s]*((1-U_unif[,s])^(-1/p.shape)-1)}
         #
@@ -227,16 +202,7 @@ print(c(j,res[j,1:(8+d)]))
 return(res)
 }
 ####
-n <- env_integer("REINSURANCE_N", 1000L, 4L)
-N.sim <- env_integer("REINSURANCE_REPS", 1000L)
-Boot <- env_integer("REINSURANCE_BOOT", 2000L, 0L)
-if (n %% 2L != 0L) stop("REINSURANCE_N must be even for equal halves.")
-Case <- env_integer("REINSURANCE_CASE", 1L)
-Sigma <- env_integer("REINSURANCE_SIGMA", 1L)
-Scale <- env_integer("REINSURANCE_SCALE", 1L)
-p.shape <- env_number("REINSURANCE_SHAPE", 3.5)
-if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
-  stop("Require CASE in 1:4, SIGMA and SCALE in 1:2, and SHAPE > 1.")
+n=1000;N.sim=1000;Boot=2000;
 
 #Case=1;Sigma=1;Scale=1;p.shape=3.5;
 #Case=2;Sigma=1;Scale=1;p.shape=3.5;
@@ -261,8 +227,13 @@ if (!Case %in% 1:4 || !Sigma %in% 1:2 || !Scale %in% 1:2 || p.shape <= 1)
 res=simu(n,N.sim,Boot,Case,Sigma,Scale,p.shape)
 print(res[,1:11])
 
-save(res,file=file.path(OUT,paste0('Simu_n',n,'_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_', arg,'.Rdata')))
+save(res,file=paste0('Simu_n',n,'_Case',Case,'_Sigma',Sigma,'_Scale',Scale,'_Shape',p.shape,'_', arg,'.Rdata'))
  }
-# Invoke separate job IDs to generate additional reproducible batches.
-job_id <- env_integer("REINSURANCE_JOB_ID", 1L)
-parallel_func(job_id)
+#job_id=as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
+#sfInit(parallel = TRUE, cpus =1, type = 'SOCK')
+#sfClusterSetupRNGstream(seed = rep(job_id,4))
+#res <- sfLapply(job_id, parallel_func)
+#sfStop()
+for(job_id in 1:1){
+  set.seed(rep(job_id,4));parallel_func(job_id)
+}

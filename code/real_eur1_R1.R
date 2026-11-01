@@ -10,23 +10,6 @@ script_directory <- function() {
 }
 
 SCRIPT_DIR <- script_directory()
-REPO_DIR <- normalizePath(file.path(SCRIPT_DIR, ".."), winslash = "/",
-                          mustWork = TRUE)
-empirical_data_file <- function() {
-  Sys.getenv("REINSURANCE_DATA_FILE",
-             unset = file.path(REPO_DIR, "private", "data_eur.Rda"))
-}
-empirical_output_directory <- function() {
-  output <- Sys.getenv(
-    "REINSURANCE_OUTPUT_DIR",
-    unset = file.path(REPO_DIR, "outputs", "empirical")
-  )
-  if (!dir.exists(output) &&
-      !dir.create(output, recursive = TRUE, showWarnings = FALSE)) {
-    stop("Unable to create the empirical output directory: ", output)
-  }
-  output
-}
 local_library <- file.path(SCRIPT_DIR, ".r_libs")
 if (dir.exists(local_library)) {
   .libPaths(c(local_library, .libPaths()))
@@ -36,10 +19,6 @@ if (!requireNamespace("nleqslv", quietly = TRUE)) {
 }
 
 load_loss_matrix <- function(data_file, seed = 9L) {
-  if (!file.exists(data_file)) {
-    stop("Private data file not found: ", data_file,
-         ". Set REINSURANCE_DATA_FILE to an authorized local Rda file.")
-  }
   data_environment <- new.env(parent = emptyenv())
   load(data_file, envir = data_environment)
   if (!exists("final_df", envir = data_environment, inherits = FALSE)) {
@@ -47,15 +26,8 @@ load_loss_matrix <- function(data_file, seed = 9L) {
   }
   final_df <- get("final_df", envir = data_environment, inherits = FALSE)
   required_columns <- c("1", "2", "3")
-  if (!is.data.frame(final_df) ||
-      !all(required_columns %in% names(final_df))) {
-    stop("final_df must be a data frame with loss columns named '1', '2', and '3'.")
-  }
-  if (!all(vapply(final_df[required_columns], is.numeric, logical(1)))) {
-    stop("The loss columns in final_df must be numeric.")
-  }
-  if (nrow(final_df) < 4L) {
-    stop("At least four loss observations are required for the split analysis.")
+  if (!all(required_columns %in% names(final_df))) {
+    stop("final_df must contain loss columns named '1', '2', and '3'.")
   }
   X <- as.matrix(final_df[, required_columns])
   storage.mode(X) <- "double"
@@ -727,14 +699,14 @@ main <- function() {
     mu0 = -1
   )
 
-  X <- load_loss_matrix(empirical_data_file(), seed = 9L)
+  X <- load_loss_matrix(file.path(SCRIPT_DIR, "data_eur.Rda"), seed = 9L)
   start_time <- proc.time()[["elapsed"]]
   sim.list.1 <- run_case_analysis(
     X, settings, B = B, ncore = ncore, N_sim = N_sim, seed = 91000L
   )
   elapsed <- proc.time()[["elapsed"]] - start_time
   attr(sim.list.1, "elapsed_seconds") <- elapsed
-  save(sim.list.1, file = file.path(empirical_output_directory(), "real_eur1_R1.Rda"))
+  save(sim.list.1, file = file.path(SCRIPT_DIR, "real_eur1_R1.Rda"))
 
   diagnostics <- attr(sim.list.1, "diagnostics")
   cat("Case 1 completed in", round(elapsed, 1), "seconds.\n")
